@@ -42,7 +42,7 @@ def build_model(input_shape, args):
     embedding = eval(config.net_name).get_symbol(data, config.emb_size, None, config.net_act, args.wd)
     extractor = keras.Model(inputs=data, outputs=embedding, name='extractor')
 
-    label = keras.Input(shape=(1,), name='label', dtype=tf.int32)
+    label = keras.Input(shape=(), name='label', dtype=tf.int32)
     fc7 = block.FaceCategoryOutput(config.num_classes, loss_type=config.loss_name, s=config.loss_s, m1=config.loss_m1, m2=config.loss_m2, m3=config.loss_m3)((embedding, label))
     classifier = keras.Model(inputs=(data, label), outputs=fc7, name='classifier')
 
