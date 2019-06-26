@@ -45,13 +45,20 @@ def Residual(data, num_block=1, num_out=1, kernel=(3, 3), stride=(1, 1), pad=(1,
 '''
 
 
-def res_depth_wise(data, training, num_block=1, num_out=1, kernel_size=3, stride=1, padding=1, num_group=1, wd=0.0005, act_type='prelu', name='res'):
-    identity = data
+def res_depth_wise(data, training, num_block=1, num_out=1, kernel_size=3, stride=1, padding=1, num_group=1, wd=0.0005,
+                   act_type='prelu', name='res'):
     for i in range(num_block):
-        shortcut = identity
-        conv = block.DWBlock(num_out=num_out, kernel_size=kernel_size, stride=stride, padding=padding, num_group=num_group, act_type=act_type, wd=wd, bn_mom=config.bn_mom, name=name, suffix=str(i))(identity, training=training)
-        identity = keras.layers.add([conv, shortcut])
-    return identity
+        data = block.ResDWBlock(num_out=num_out,
+                                kernel_size=kernel_size,
+                                stride=stride,
+                                padding=padding,
+                                num_group=num_group,
+                                act_type=act_type,
+                                wd=wd,
+                                bn_mom=config.bn_mom,
+                                name=name,
+                                suffix=str(i+1))(data, training=training)
+    return data
         
 
 def get_symbol(inputs, embedding_size, training=None, net_act='prelu', wd=0.0005):

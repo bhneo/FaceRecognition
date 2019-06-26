@@ -1,15 +1,13 @@
+import tensorflow as tf
 from tensorflow import keras
 from tensorflow.python.keras.layers import Layer
-from losses import face_losses
-
-import tensorflow as tf
 
 
 def activation(act_type, name='act'):
     if act_type is None:
         act = None
     elif act_type == 'prelu':
-        act = keras.layers.PReLU(name=name)
+        act = keras.layers.PReLU(name=name, shared_axes=[1, 2])
     else:
         act = keras.layers.Activation(act_type, name=name)
     return act
@@ -104,7 +102,9 @@ class DWConvBnAct(Layer):
 class DWBlock(Layer):
     def __init__(self, num_out, kernel_size=3, stride=1, padding=1, num_group=1, act_type='prelu',
                  use_bias=False, wd=0.0005, bn_mom=0.9, name='dw_block', suffix=''):
-        super(DWBlock, self).__init__(name=name+suffix)
+        if len(suffix) > 0:
+            name = '_'.join([name, suffix])
+        super(DWBlock, self).__init__(name=name)
 
         self.expand = ConvBnAct(filters=num_group, kernel_size=1, stride=1, padding=0, act_type=act_type,
                                 use_bias=use_bias, wd=wd, bn_mom=bn_mom, name='expand')
@@ -118,6 +118,21 @@ class DWBlock(Layer):
         x = self.depth_wise(x, training=training)
         x = self.project(x, training=training)
         return x
+
+
+class ResDWBlock(Layer):
+    def __init__(self, num_out, kernel_size=3, stride=1, padding=1, num_group=1, act_type='prelu',
+                 use_bias=False, wd=0.0005, bn_mom=0.9, name='dw_block', suffix=''):
+        if len(suffix) > 0:
+            name = '_'.join([name, suffix])
+        super(ResDWBlock, self).__init__(name=name)
+        self.dw_block = DWBlock(num_out=num_out, kernel_size=kernel_size, stride=stride, padding=padding,
+                                num_group=num_group, act_type=act_type, use_bias=use_bias, wd=wd, bn_mom=bn_mom)
+
+    def call(self, inputs, training=None):
+        conv = self.dw_block(inputs, training=training)
+        out = keras.layers.add([conv, inputs])
+        return out
 
 
 class FaceCategoryOutput(Layer):
