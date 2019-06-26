@@ -96,13 +96,16 @@ def train_net(args):
     tensor_board.set_model(classifier)
 
     train_names = ['train_loss', 'train_acc']
-    train_results = []
     highest_score = 0
     for epoch in range(initial_epoch, default.end_epoch):
         for batch in range(rest_batches, batches_per_epoch+1):
             utils.update_learning_rate(classifier, lr_decay_steps, global_step)
             train_results = classifier.train_on_batch(train_dataset, reset_metrics=False)
             global_step += 1
+            if global_step % 20 == 0:
+                print('Step {}, loss:{}, acc:{}'.format(global_step, train_results[0], train_results[1]))
+                utils.write_log(tensor_board, train_names, train_results, global_step)
+                classifier.reset_metrics()
             if global_step % 1000 == 0:
                 print('lr-batch-epoch:', float(K.get_value(classifier.optimizer.lr)), batch, epoch)
             if global_step >= 0 and global_step % args.verbose == 0:
@@ -145,9 +148,6 @@ def train_net(args):
                                                        score, path))
                         highest_score = score
                         classifier.save_weights(path)
-
-        utils.write_log(tensor_board, train_names, train_results, epoch)
-        classifier.reset_metrics()
 
 
 def main():
