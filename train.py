@@ -6,6 +6,7 @@ import sklearn
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.python.keras import backend as K
+from tensorflow.python.client import timeline
 
 import data_input
 import verification
@@ -87,9 +88,13 @@ def train_net(args):
 
     valid_datasets = data_input.load_valid_set(data_dir, config.val_targets)
 
+    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    run_metadata = tf.RunMetadata()
+
     classifier.compile(optimizer=keras.optimizers.SGD(lr=args.lr, momentum=args.mom),
                        loss=keras.losses.CategoricalCrossentropy(from_logits=True),
-                       metrics=[keras.metrics.SparseCategoricalAccuracy()])
+                       metrics=[keras.metrics.SparseCategoricalAccuracy()],
+                       options=run_options, run_metadata=run_metadata)
     classifier.summary()
 
     tensor_board = keras.callbacks.TensorBoard(ckpt_dir)
@@ -102,10 +107,14 @@ def train_net(args):
             utils.update_learning_rate(classifier, lr_decay_steps, global_step)
             train_results = classifier.train_on_batch(train_dataset, reset_metrics=False)
             global_step += 1
-            if global_step % 20 == 0:
+            if global_step % 1 == 0:
                 print('Step {}, loss:{}, acc:{}'.format(global_step, train_results[0], train_results[1]))
                 utils.write_log(tensor_board, train_names, train_results, global_step)
                 classifier.reset_metrics()
+                tl = timeline.Timeline(run_metadata.step_stats)
+                ctf = tl.generate_chrome_trace_format()
+                with open('timeline.json', 'w') as f:
+                    f.write(ctf)
             if global_step % 1000 == 0:
                 print('lr-batch-epoch:', float(K.get_value(classifier.optimizer.lr)), batch, epoch)
             if global_step >= 0 and global_step % args.verbose == 0:
