@@ -3,11 +3,19 @@ from tensorflow.python.keras import backend as K
 
 
 def get_lr_schedule(steps, decay=0.1):
-    def lr_schedule(step, lr):
-        for i in steps:
-            if step == i:
-                lr *= decay
-        return lr
+    if isinstance(steps, dict):
+        def lr_schedule(step, lr):
+            for key in steps:
+                if step < key:
+                    break
+                lr = steps[key]
+            return lr
+    else:
+        def lr_schedule(step, lr):
+            for i in steps:
+                if step == i:
+                    lr *= decay
+            return lr
     return lr_schedule
 
 

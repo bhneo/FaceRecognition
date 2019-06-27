@@ -10,7 +10,7 @@ from tensorflow.python.keras import backend as K
 import data_input
 import verification
 from nets import fmobilefacenet
-from common import block, utils
+from common import block, utils, callbacks
 from config import config, default, generate_config
 
 
@@ -63,7 +63,7 @@ def train_net(args):
 
     extractor, classifier = build_model((image_size[0], image_size[1], 3), args)
 
-    global_step = 0
+    initial_epoch = 0
     ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model-{step:04d}.ckpt')
     ckpt_dir = os.path.dirname(ckpt_path)
     print('ckpt_path', ckpt_path)
@@ -72,82 +72,44 @@ def train_net(args):
     if len(args.pretrained) == 0:
         latest = tf.train.latest_checkpoint(ckpt_dir)
         if latest:
-            global_step = int(latest.split('-')[-1].split('.')[0])
+            initial_epoch = int(latest.split('-')[-1].split('.')[0])
             classifier.load_weights(latest)
     else:
         print('loading', args.pretrained, args.pretrained_epoch)
         load_path = os.path.join(args.pretrained, '-', args.pretrained_epoch, '.ckpt')
         classifier.load_weights(load_path)
 
-    initial_epoch = global_step // batches_per_epoch
-    rest_batches = global_step % batches_per_epoch
-
-    lr_decay_steps = [(int(x), args.lr*np.power(0.1, i+1)) for i, x in enumerate(args.lr_steps.split(','))]
+    lr_decay_steps = {}
+    for i, x in enumerate(args.lr_steps.split(',')):
+        lr_decay_steps[int(x)] = args.lr*np.power(0.1, i+1)
     print('lr_steps', lr_decay_steps)
+    lr_schedule = utils.get_lr_schedule(lr_decay_steps)
+    init_lr = lr_schedule(initial_epoch*batches_per_epoch, args.lr)
 
-    valid_datasets = data_input.load_valid_set(data_dir, config.val_targets)
-
-    classifier.compile(optimizer=keras.optimizers.SGD(lr=args.lr, momentum=args.mom),
+    _callbacks = [callbacks.LearningRateSchedulerOnBatch(lr_schedule, steps_per_epoch=batches_per_epoch, verbose=1),
+                  keras.callbacks.TensorBoard(ckpt_dir, update_freq=args.frequent),
+                  callbacks.FaceRecognitionValidation(extractor,
+                                                      steps_per_epoch=batches_per_epoch,
+                                                      valid_list=data_input.read_valid_sets(data_dir, config.val_targets),
+                                                      period=args.verbose,
+                                                      verbose=1),
+                  callbacks.ModelCheckpointOnBatch(ckpt_path,
+                                                   steps_per_epoch=batches_per_epoch,
+                                                   monitor='score',
+                                                   verbose=1,
+                                                   save_best_only=True,
+                                                   save_weights_only=True,
+                                                   mode='max',
+                                                   period=args.verbose)]
+    classifier.compile(optimizer=keras.optimizers.SGD(lr=init_lr, momentum=args.mom),
                        loss=keras.losses.CategoricalCrossentropy(from_logits=True),
                        metrics=[keras.metrics.SparseCategoricalAccuracy()])
     classifier.summary()
-
-    tensor_board = keras.callbacks.TensorBoard(ckpt_dir)
-    tensor_board.set_model(classifier)
-
-    train_names = ['train_loss', 'train_acc']
-    highest_score = 0
-    for epoch in range(initial_epoch, default.end_epoch):
-        for batch in range(rest_batches, batches_per_epoch+1):
-            utils.update_learning_rate(classifier, lr_decay_steps, global_step)
-            train_results = classifier.train_on_batch(train_dataset, reset_metrics=False)
-            global_step += 1
-            if global_step % 1 == 0:
-                print('Step {}, loss:{}, acc:{}'.format(global_step, train_results[0], train_results[1]))
-                utils.write_log(tensor_board, train_names, train_results, global_step)
-                classifier.reset_metrics()
-            if global_step % 1000 == 0:
-                print('lr-batch-epoch:', float(K.get_value(classifier.optimizer.lr)), batch, epoch)
-            if global_step >= 0 and global_step % args.verbose == 0:
-                acc_list = []
-                for key in valid_datasets:
-                    data_set, data_set_flip, is_same_list = valid_datasets[key]
-                    embeddings = extractor.predict(data_set)
-                    embeddings_flip = extractor.predict(data_set_flip)
-                    embeddings_parts = [embeddings, embeddings_flip]
-                    x_norm = 0.0
-                    x_norm_cnt = 0
-                    for part in embeddings_parts:
-                        for i in range(part.shape[0]):
-                            embedding = part[i]
-                            norm = np.linalg.norm(embedding)
-                            x_norm += norm
-                            x_norm_cnt += 1
-                    x_norm /= x_norm_cnt
-                    embeddings = embeddings_parts[0] + embeddings_parts[1]
-                    embeddings = sklearn.preprocessing.normalize(embeddings)
-                    print(embeddings.shape)
-                    _, _, accuracy, val, val_std, far = verification.evaluate(embeddings, is_same_list, folds=10)
-                    acc, std = np.mean(accuracy), np.std(accuracy)
-
-                    print('[%s][%d]XNorm: %f' % (key, batch, x_norm))
-                    print('[%s][%d]Accuracy-Flip: %1.5f+-%1.5f' % (key, batch, acc, std))
-                    acc_list.append(acc)
-
-                if len(acc_list) > 0:
-                    score = sum(acc_list)
-                    if highest_score == 0:
-                        highest_score = score
-                    elif highest_score >= score:
-                        print('\nStep %05d: score did not improve from %0.5f' %
-                              (global_step, highest_score))
-                    else:
-                        path = ckpt_path.format(step=global_step)
-                        print('\nStep %05d: score improved from %0.5f to %0.5f,'
-                              ' saving model to %s' % (global_step, highest_score,
-                                                       score, path))
-                        highest_score = score
-                        classifier.save_weights(path)
+    classifier.fit(train_dataset,
+                   initial_epoch=initial_epoch,
+                   epochs=default.end_epoch,
+                   steps_per_epoch=batches_per_epoch,
+                   callbacks=_callbacks)
 
 
 def main():

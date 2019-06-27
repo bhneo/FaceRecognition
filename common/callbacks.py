@@ -2,113 +2,183 @@ import tensorflow as tf
 import numpy as np
 import verification
 
+import sklearn
+import data_input
 from tensorflow import keras
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.callbacks import Callback
 
 
-class FaceRecognitionTest(Callback):
-    def __init__(self, extractor, valid_list, valid_name_list, period, batch_size, verbose=0):
-        super(FaceRecognitionTest, self).__init__()
-        self.extractor = extractor
-        self.valid_list = valid_list
-        self.valid_name_list = valid_name_list
-        self.period = period
-        self.batch_size = batch_size
+class LearningRateSchedulerOnBatch(Callback):
+    def __init__(self, schedule, steps_per_epoch, verbose=0):
+        super(LearningRateSchedulerOnBatch, self).__init__()
+        self.schedule = schedule
+        self.steps_per_epoch = steps_per_epoch
         self.verbose = verbose
-        self.highest_acc = [0.0, 0.0]  # lfw and target
+        self.epoch = 0
+
+    def on_train_begin(self, logs=None):
+        logs = logs or {}
+        logs['lr'] = K.get_value(self.model.optimizer.lr)
+        if self.verbose:
+            print('\nStart at learning rate of %s.' % (logs['lr']))
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self.epoch = epoch
+
+    def on_batch_begin(self, batch, logs=None):
+        global_step = self.epoch * self.steps_per_epoch + batch
+        if not hasattr(self.model.optimizer, 'lr'):
+            raise ValueError('Optimizer must have a "lr" attribute.')
+        last_lr = float(K.get_value(self.model.optimizer.lr))
+        if global_step % 1000 == 0:
+            print('lr-batch-epoch:', last_lr, batch, self.epoch)
+        lr = self.schedule(batch, last_lr)
+        if not isinstance(lr, (float, np.float32, np.float64)):
+            raise ValueError('The output of the "schedule" function '
+                             'should be float.')
+        if last_lr != lr:
+            K.set_value(self.model.optimizer.lr, lr)
+            logs = logs or {}
+            logs['lr'] = K.get_value(self.model.optimizer.lr)
+            if self.verbose > 0:
+                print('\nStep %05d: LearningRateScheduler reducing learning '
+                      'rate to %s.' % (global_step + 1, lr))
+
+
+class FaceRecognitionValidation(Callback):
+    def __init__(self, extractor, steps_per_epoch, valid_list, period, verbose=0):
+        super(FaceRecognitionValidation, self).__init__()
+        self.extractor = extractor
+        self.steps_per_epoch = steps_per_epoch
+        self.valid_list = valid_list
+        self.period = period
+        self.verbose = verbose
         self.global_step = 0
         self.save_step = 0
+        self.epoch = 0
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self.epoch = epoch
 
     def on_batch_end(self, batch, logs=None):
-        if batch >= 0 and batch % self.period == 0:
+        global_step = self.epoch * self.steps_per_epoch + batch
+        if global_step >= 0 and global_step % self.period == 0:
             acc_list = []
-            for i in range(len(self.valid_list)):
-                embeddings = test(self.valid_list[i], self.extractor, self.batch_size, 10)
-
-                # get embedding
-                _, _, accuracy, val, val_std, far = verification.evaluate(embeddings, self.valid_name_list, nrof_folds=fold)
+            logs = logs or {}
+            for key in self.valid_list:
+                print('Test on valid set:', key)
+                bins, is_same_list = self.valid_list[key]
+                dataset = tf.data.Dataset.from_tensor_slices(bins) \
+                    .map(data_input.get_valid_parse_function(False), num_parallel_calls=tf.data.experimental.AUTOTUNE) \
+                    .batch(256)
+                dataset_flip = tf.data.Dataset.from_tensor_slices(bins) \
+                    .map(data_input.get_valid_parse_function(True), num_parallel_calls=tf.data.experimental.AUTOTUNE) \
+                    .batch(256)
+                batch_num = len(bins) // 256
+                if len(bins) % 256 != 0:
+                    batch_num += 1
+                embeddings = self.extractor.predict(dataset, steps=batch_num, verbose=1)
+                embeddings_flip = self.extractor.predict(dataset_flip, steps=batch_num, verbose=1)
+                embeddings_parts = [embeddings, embeddings_flip]
+                x_norm = 0.0
+                x_norm_cnt = 0
+                for part in embeddings_parts:
+                    for i in range(part.shape[0]):
+                        embedding = part[i]
+                        norm = np.linalg.norm(embedding)
+                        x_norm += norm
+                        x_norm_cnt += 1
+                x_norm /= x_norm_cnt
+                embeddings = embeddings_parts[0] + embeddings_parts[1]
+                embeddings = sklearn.preprocessing.normalize(embeddings)
+                print(embeddings.shape)
+                _, _, accuracy, val, val_std, far = verification.evaluate(embeddings, is_same_list, folds=10)
                 acc, std = np.mean(accuracy), np.std(accuracy)
-                return acc, std, _xnorm, embeddings_list
 
-                print('[%s][%d]XNorm: %f' % (self.valid_name_list[i], self.batch_size, x_norm))
-                print('[%s][%d]Accuracy-Flip: %1.5f+-%1.5f' % (self.valid_name_list[i], self.batch_size, acc, std))
+                print('[%s][%d]XNorm: %f' % (key, batch, x_norm))
+                print('[%s][%d]Accuracy-Flip: %1.5f+-%1.5f' % (key, batch, acc, std))
                 acc_list.append(acc)
 
-            self.save_step += 1
-
-            is_highest = False
-            if len(acc_list) > 0:
-                score = sum(acc_list)
-                if acc_list[-1] >= self.highest_acc[-1]:
-                    if acc_list[-1] > self.highest_acc[-1]:
-                        is_highest = True
-                    else:
-                        if score >= self.highest_acc[0]:
-                            is_highest = True
-                            self.highest_acc[0] = score
-                    self.highest_acc[-1] = acc_list[-1]
-            if is_highest:
-                print('saving', self.save_step)
-                filepath = self.filepath.format(epoch=epoch + 1, **logs)
-                self.model.save_weights(filepath, overwrite=True)
-            print('[%d]Accuracy-Highest: %1.5f' % (mbatch, self.highest_acc[-1]))
+            logs['score'] = sum(acc_list)
+            if self.verbose > 0:
+                print('\nScore of step %05d: %0.5f' % (global_step, logs['score']))
 
 
-class FaceRecognitionCheckpoint(Callback):
+class ModelCheckpointOnBatch(Callback):
     def __init__(self,
-                 ckpt_path,
-                 extractor,
-                 valid_list,
-                 valid_name_list,
+                 filepath,
+                 steps_per_epoch,
+                 monitor='val_loss',
                  verbose=0,
                  save_best_only=False,
                  save_weights_only=False,
+                 mode='auto',
                  period=1):
-        super(FaceRecognitionCheckpoint, self).__init__()
-        self.extractor = extractor
-        self.valid_list = valid_list
-        self.valid_name_list = valid_name_list
+        super(ModelCheckpointOnBatch, self).__init__()
+        self.monitor = monitor
         self.verbose = verbose
-        self.ckpt_path = ckpt_path
+        self.filepath = filepath
+        self.steps_per_epoch = steps_per_epoch
         self.save_best_only = save_best_only
         self.save_weights_only = save_weights_only
         self.period = period
-        self.epochs_since_last_save = 0
+        self.epoch = 0
 
-        self.monitor_op = np.greater
-        self.best = -np.Inf
+        if mode not in ['auto', 'min', 'max']:
+            logging.warning('ModelCheckpoint mode %s is unknown, '
+                            'fallback to auto mode.', mode)
+            mode = 'auto'
 
-        self.highest_acc = [0.0, 0.0]  # lfw and target
-        self.global_step = 0
-        self.save_step = 0
+        if mode == 'min':
+            self.monitor_op = np.less
+            self.best = np.Inf
+        elif mode == 'max':
+            self.monitor_op = np.greater
+            self.best = -np.Inf
+        else:
+            if 'acc' in self.monitor or self.monitor.startswith('fmeasure'):
+                self.monitor_op = np.greater
+                self.best = -np.Inf
+            else:
+                self.monitor_op = np.less
+                self.best = np.Inf
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self.epoch = epoch
 
     def on_batch_end(self, batch, logs=None):
+        global_step = self.epoch * self.steps_per_epoch + batch
         logs = logs or {}
-        self.epochs_since_last_save += 1
-        if self.epochs_since_last_save >= self.period:
-            self.epochs_since_last_save = 0
-            ckpt_path = self.ckpt_path.format(step=batch + 1, **logs)
+        if global_step % self.period == 0:
+            filepath = self.filepath.format(step=batch + 1, **logs)
             if self.save_best_only:
-                if self.monitor_op(current, self.best):
-                    if self.verbose > 0:
-                        print('\nBatch %05d: %s improved from %0.5f to %0.5f,'
-                              ' saving model to %s' % (batch + 1, self.monitor, self.best,
-                                                       current, ckpt_path))
-                    self.best = current
-                    if self.save_weights_only:
-                        self.model.save_weights(ckpt_path, overwrite=True)
-                    else:
-                        self.model.save(ckpt_path, overwrite=True)
+                current = logs.get(self.monitor)
+                if current is None:
+                    logging.warning('Can save best model only with %s available, '
+                                    'skipping.', self.monitor)
                 else:
-                    if self.verbose > 0:
-                        print('\nBatch %05d: %s did not improve from %0.5f' %
-                              (batch + 1, self.monitor, self.best))
+                    if self.monitor_op(current, self.best):
+                        if self.verbose > 0:
+                            print('\nStep %05d: %s improved from %0.5f to %0.5f,'
+                                  ' saving model to %s' % (global_step + 1, self.monitor, self.best,
+                                                           current, filepath))
+                        self.best = current
+                        if self.save_weights_only:
+                            self.model.save_weights(filepath, overwrite=True)
+                        else:
+                            self.model.save(filepath, overwrite=True)
+                    else:
+                        if self.verbose > 0:
+                            print('\nStep %05d: %s did not improve from %0.5f' %
+                                  (global_step + 1, self.monitor, self.best))
             else:
                 if self.verbose > 0:
-                    print('\nBatch %05d: saving model to %s' % (batch + 1, ckpt_path))
+                    print('\nStep %05d: saving model to %s' % (global_step + 1, filepath))
                 if self.save_weights_only:
-                    self.model.save_weights(ckpt_path, overwrite=True)
+                    self.model.save_weights(filepath, overwrite=True)
                 else:
-                    self.model.save(ckpt_path, overwrite=True)
+                    self.model.save(filepath, overwrite=True)
 
 

@@ -143,17 +143,6 @@ def load_bin(path, image_size):
     return data_list, is_same_list
 
 
-def read_valid_sets(data_dir, dataset_list):
-    valid_set = {}
-    for name in dataset_list:
-        path = os.path.join(data_dir, name + ".bin")
-        if os.path.exists(path):
-            bins, is_same_list = read_bin(path)
-            valid_set[name] = (bins, is_same_list)
-            print('valid set', name)
-    return valid_set
-
-
 def view_bin(path):
     bins, is_same_list = read_bin(path)
     dataset = tf.data.Dataset.from_tensor_slices(bins)
@@ -184,6 +173,17 @@ def view_bin(path):
     plt.show()
 
 
+def read_valid_sets(data_dir, dataset_list):
+    valid_set = {}
+    for name in dataset_list:
+        path = os.path.join(data_dir, name + ".bin")
+        if os.path.exists(path):
+            bins, is_same_list = read_bin(path)
+            valid_set[name] = (bins, is_same_list)
+            print('valid set', name)
+    return valid_set
+
+
 def make_valid_set(path, name, batch_size=1024):
     source = os.path.join(path, name + '.bin')
     if os.path.exists(source):
@@ -194,6 +194,7 @@ def make_valid_set(path, name, batch_size=1024):
         dataset_flip = tf.data.Dataset.from_tensor_slices(bins) \
             .map(get_valid_parse_function(True), num_parallel_calls=tf.data.experimental.AUTOTUNE) \
             .batch(batch_size)
+
         return dataset, dataset_flip, is_same_list
 
 
