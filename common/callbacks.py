@@ -64,7 +64,7 @@ class FaceRecognitionValidation(Callback):
 
     def on_batch_end(self, batch, logs=None):
         global_step = self.epoch * self.steps_per_epoch + batch
-        if global_step >= 0 and global_step % self.period == 0:
+        if global_step > 0 and global_step % self.period == 0:
             acc_list = []
             logs = logs or {}
             for key in self.valid_list:
@@ -79,8 +79,9 @@ class FaceRecognitionValidation(Callback):
                 batch_num = len(bins) // 256
                 if len(bins) % 256 != 0:
                     batch_num += 1
-                embeddings = self.extractor.predict(dataset, steps=batch_num, verbose=1)
-                embeddings_flip = self.extractor.predict(dataset_flip, steps=batch_num, verbose=1)
+                print('predicting...')
+                embeddings = self.extractor.predict(dataset, steps=batch_num, verbose=0)
+                embeddings_flip = self.extractor.predict(dataset_flip, steps=batch_num, verbose=0)
                 embeddings_parts = [embeddings, embeddings_flip]
                 x_norm = 0.0
                 x_norm_cnt = 0
