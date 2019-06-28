@@ -118,4 +118,8 @@ def main():
 
 
 if __name__ == '__main__':
+    tf_config = tf.ConfigProto(log_device_placement=False, gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.5))
+    tf_config.gpu_options.allow_growth = True
+    sess = tf.Session(config=tf_config)
+    K.set_session(sess)
     main()

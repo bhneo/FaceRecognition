@@ -22,7 +22,7 @@ class LearningRateSchedulerOnBatch(Callback):
         logs = logs or {}
         logs['lr'] = K.get_value(self.model.optimizer.lr)
         if self.verbose:
-            print('\nStart at learning rate of %s.' % (logs['lr']))
+            print('\nStart at learning rate of %s' % (logs['lr']))
 
     def on_epoch_begin(self, epoch, logs=None):
         self.epoch = epoch
@@ -33,7 +33,7 @@ class LearningRateSchedulerOnBatch(Callback):
             raise ValueError('Optimizer must have a "lr" attribute.')
         last_lr = float(K.get_value(self.model.optimizer.lr))
         if global_step % 1000 == 0:
-            print('lr-batch-epoch:', last_lr, batch, self.epoch)
+            print('lr-batch-epoch: %.4f %s %s' % (last_lr, batch, self.epoch))
         lr = self.schedule(batch, last_lr)
         if not isinstance(lr, (float, np.float32, np.float64)):
             raise ValueError('The output of the "schedule" function '
