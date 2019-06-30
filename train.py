@@ -38,15 +38,13 @@ def parse_args():
 
 
 def build_model(input_shape, args):
-    data = keras.Input(shape=input_shape, name='data')
+    data = tf.placeholder(dtype=tf.float32, shape=input_shape, name='data')
     embedding = eval(config.net_name).get_symbol(data, config.emb_size, None, config.net_act, args.wd)
-    extractor = keras.Model(inputs=data, outputs=embedding, name='extractor')
 
-    label = keras.Input(shape=(), name='label', dtype=tf.int32)
+    label = tf.placeholder(dtype=tf.int32, shape=(), name='label')
     fc7 = block.FaceCategoryOutput(config.num_classes, loss_type=config.loss_name, s=config.loss_s, m1=config.loss_m1, m2=config.loss_m2, m3=config.loss_m3)((embedding, label))
-    classifier = keras.Model(inputs=(data, label), outputs=fc7, name='classifier')
 
-    return extractor, classifier
+    return data, label, embedding, fc7
 
 
 def train_net(args):
@@ -61,7 +59,7 @@ def train_net(args):
     print('Called with argument:', args, config)
     train_dataset, batches_per_epoch = data_input.training_dataset(training_path, default.per_batch_size)
 
-    extractor, classifier = build_model((image_size[0], image_size[1], 3), args)
+    data, label, embedding, fc7 = build_model((image_size[0], image_size[1], 3), args)
 
     initial_epoch = 0
     ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model-{step:04d}.ckpt')
