@@ -17,7 +17,7 @@ def train_parse_function(example_proto):
     img = tf.reshape(img, shape=(112, 112, 3))
     img = tf.cast(img, dtype=tf.float32)
     img = tf.image.random_flip_left_right(img)
-    label = tf.cast(features['label'], tf.int64)
+    label = tf.cast(features['label'], tf.int32)
     return (img, label), label
 
 

@@ -37,14 +37,13 @@ def parse_args():
     return args
 
 
-def build_model(input_shape, args):
-    data = tf.placeholder(dtype=tf.float32, shape=input_shape, name='data')
-    embedding = eval(config.net_name).get_symbol(data, config.emb_size, None, config.net_act, args.wd)
+def build_model(inputs, label, args):
+    is_training = tf.placeholder(dtype=tf.bool, shape=[], name='is_training')
+    embedding = eval(config.net_name).get_symbol(inputs, config.emb_size, is_training, config.net_act, args.wd)
 
-    label = tf.placeholder(dtype=tf.int32, shape=(), name='label')
     fc7 = block.FaceCategoryOutput(config.num_classes, loss_type=config.loss_name, s=config.loss_s, m1=config.loss_m1, m2=config.loss_m2, m3=config.loss_m3)((embedding, label))
 
-    return data, label, embedding, fc7
+    return embedding, fc7, is_training
 
 
 def train_net(args):
@@ -58,24 +57,26 @@ def train_net(args):
 
     print('Called with argument:', args, config)
     train_dataset, batches_per_epoch = data_input.training_dataset(training_path, default.per_batch_size)
-
-    data, label, embedding, fc7 = build_model((image_size[0], image_size[1], 3), args)
+    iterator = train_dataset.make_initializable_iterator()
+    next_element = iterator.get_next()[0]
+    embedding, fc7, is_training = build_model(next_element[0], next_element[1], args)
 
     initial_epoch = 0
     ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model-{step:04d}.ckpt')
     ckpt_dir = os.path.dirname(ckpt_path)
     print('ckpt_path', ckpt_path)
+    ckpt = None
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
     if len(args.pretrained) == 0:
         latest = tf.train.latest_checkpoint(ckpt_dir)
         if latest:
             initial_epoch = int(latest.split('-')[-1].split('.')[0])
-            classifier.load_weights(latest)
+            ckpt = latest
     else:
         print('loading', args.pretrained, args.pretrained_epoch)
         load_path = os.path.join(args.pretrained, '-', args.pretrained_epoch, '.ckpt')
-        classifier.load_weights(load_path)
+        ckpt = load_path
 
     lr_decay_steps = {}
     for i, x in enumerate(args.lr_steps.split(',')):
@@ -84,30 +85,41 @@ def train_net(args):
     lr_schedule = utils.get_lr_schedule(lr_decay_steps)
     init_lr = lr_schedule(initial_epoch*batches_per_epoch, args.lr)
 
-    _callbacks = [callbacks.LearningRateSchedulerOnBatch(lr_schedule, steps_per_epoch=batches_per_epoch, verbose=1),
-                  keras.callbacks.TensorBoard(ckpt_dir, update_freq=args.frequent),
-                  callbacks.FaceRecognitionValidation(extractor,
-                                                      steps_per_epoch=batches_per_epoch,
-                                                      valid_list=data_input.read_valid_sets(data_dir, config.val_targets),
-                                                      period=args.verbose,
-                                                      verbose=1),
-                  callbacks.ModelCheckpointOnBatch(ckpt_path,
-                                                   steps_per_epoch=batches_per_epoch,
-                                                   monitor='score',
-                                                   verbose=1,
-                                                   save_best_only=True,
-                                                   save_weights_only=True,
-                                                   mode='max',
-                                                   period=args.verbose)]
-    classifier.compile(optimizer=keras.optimizers.SGD(lr=init_lr, momentum=args.mom),
-                       loss=keras.losses.CategoricalCrossentropy(from_logits=True),
-                       metrics=[keras.metrics.SparseCategoricalAccuracy()])
-    classifier.summary()
-    classifier.fit(train_dataset,
-                   initial_epoch=initial_epoch,
-                   epochs=default.end_epoch,
-                   steps_per_epoch=batches_per_epoch,
-                   callbacks=_callbacks)
+    # _callbacks = [callbacks.LearningRateSchedulerOnBatch(lr_schedule, steps_per_epoch=batches_per_epoch, verbose=1),
+    #               keras.callbacks.TensorBoard(ckpt_dir, update_freq=args.frequent),
+    #               callbacks.FaceRecognitionValidation(extractor,
+    #                                                   steps_per_epoch=batches_per_epoch,
+    #                                                   valid_list=data_input.read_valid_sets(data_dir, config.val_targets),
+    #                                                   period=args.verbose,
+    #                                                   verbose=1),
+    #               callbacks.ModelCheckpointOnBatch(ckpt_path,
+    #                                                steps_per_epoch=batches_per_epoch,
+    #                                                monitor='score',
+    #                                                verbose=1,
+    #                                                save_best_only=True,
+    #                                                save_weights_only=True,
+    #                                                mode='max',
+    #                                                period=args.verbose)]
+    loss = tf.losses.sparse_softmax_cross_entropy(next_element[1], fc7)
+    optimizer = tf.train.MomentumOptimizer(init_lr, momentum=args.mom)
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    with tf.control_dependencies(update_ops):
+        train_ops = optimizer.minimize(loss)
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+        if ckpt:
+            saver.restore(sess, ckpt)
+        else:
+            sess.run(tf.global_variables_initializer())
+        for epoch in range(initial_epoch, default.end_epoch):
+            sess.run(iterator.initializer)
+            while True:
+                try:
+                    _, _loss = sess.run([train_ops, loss],
+                                        feed_dict={is_training: True})
+                    print('loss', _loss)
+                except tf.errors.OutOfRangeError:
+                    break
 
 
 def main():
@@ -116,7 +128,7 @@ def main():
 
 
 if __name__ == '__main__':
-    tf_config = tf.ConfigProto(log_device_placement=False, gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.5))
+    tf_config = tf.ConfigProto(log_device_placement=False, gpu_options=tf.GPUOptions())
     tf_config.gpu_options.allow_growth = True
     sess = tf.Session(config=tf_config)
     K.set_session(sess)
