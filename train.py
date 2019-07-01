@@ -58,7 +58,7 @@ def train_net(args):
     print('Called with argument:', args, config)
     train_dataset, batches_per_epoch = data_input.training_dataset(training_path, default.per_batch_size)
     iterator = train_dataset.make_initializable_iterator()
-    next_element = iterator.get_next()[0]
+    next_element = iterator.get_next()
     embedding, fc7, is_training = build_model(next_element[0], next_element[1], args)
 
     initial_epoch = 0
