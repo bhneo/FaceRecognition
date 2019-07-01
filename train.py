@@ -106,6 +106,10 @@ def train_net(args):
     with tf.control_dependencies(update_ops):
         train_ops = optimizer.minimize(loss)
     saver = tf.train.Saver()
+    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    run_metadata = tf.RunMetadata()
+    train_writer = tf.summary.FileWriter(ckpt_dir)
+    train_writer.add_graph(tf.get_default_graph())
     with tf.Session() as sess:
         if ckpt:
             saver.restore(sess, ckpt)
@@ -113,11 +117,20 @@ def train_net(args):
             sess.run(tf.global_variables_initializer())
         for epoch in range(initial_epoch, default.end_epoch):
             sess.run(iterator.initializer)
+            count = 0
             while True:
                 try:
                     _, _loss = sess.run([train_ops, loss],
-                                        feed_dict={is_training: True})
+                                        feed_dict={is_training: True},
+                                        options=run_options,
+                                        run_metadata=run_metadata
+                                        )
+                    count += 1
                     print('loss', _loss)
+                    if count % 10 == 0:
+                        print('record into tfboard')
+                        train_writer.add_run_metadata(run_metadata, 'step{}'.format(count))
+                        break
                 except tf.errors.OutOfRangeError:
                     break
 
