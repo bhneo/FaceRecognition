@@ -10,6 +10,7 @@ from tensorflow.python.keras import backend as K
 import data_input
 import verification
 from nets import fmobilefacenet
+from losses.face_losses import MarginSoftmaxSparseCategoricalCrossentropy
 from common import block, utils, callbacks
 from config import config, default, generate_config
 
@@ -42,9 +43,8 @@ def build_model(input_shape, args):
     embedding = eval(config.net_name).get_symbol(data, config.emb_size, None, config.net_act, args.wd)
     extractor = keras.Model(inputs=data, outputs=embedding, name='extractor')
 
-    label = keras.Input(shape=(), name='label', dtype=tf.int32)
-    fc7 = block.FaceCategoryOutput(config.num_classes, loss_type=config.loss_name, s=config.loss_s, m1=config.loss_m1, m2=config.loss_m2, m3=config.loss_m3)((embedding, label))
-    classifier = keras.Model(inputs=(data, label), outputs=fc7, name='classifier')
+    fc7 = block.FaceCategoryLogits(config.num_classes, norm=True)(embedding)
+    classifier = keras.Model(inputs=data, outputs=fc7, name='classifier')
 
     return extractor, classifier
 
@@ -102,7 +102,11 @@ def train_net(args):
                                                    mode='max',
                                                    period=args.verbose)]
     classifier.compile(optimizer=keras.optimizers.SGD(lr=init_lr, momentum=args.mom),
-                       loss=keras.losses.CategoricalCrossentropy(from_logits=True),
+                       loss=MarginSoftmaxSparseCategoricalCrossentropy(config.num_classes,
+                                                                       config.loss_s,
+                                                                       config.loss_m1,
+                                                                       config.loss_m2,
+                                                                       config.loss_m3),
                        metrics=[keras.metrics.SparseCategoricalAccuracy()])
     classifier.summary()
     classifier.fit(train_dataset,
@@ -118,7 +122,7 @@ def main():
 
 
 if __name__ == '__main__':
-    tf_config = tf.ConfigProto(log_device_placement=False, gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.5))
+    tf_config = tf.ConfigProto(log_device_placement=False, gpu_options=tf.GPUOptions())
     tf_config.gpu_options.allow_growth = True
     sess = tf.Session(config=tf_config)
     K.set_session(sess)

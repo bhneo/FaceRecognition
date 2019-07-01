@@ -174,7 +174,7 @@ class FaceCategoryOutput(Layer):
                     label_one_hot = label_one_hot * s_m
                     fc7 = fc7 - label_one_hot
                 else:
-                    cos_t = fc7 / self.s
+                    cos_t = tf.reduce_sum(fc7 * label_one_hot, -1) / self.s
                     t = tf.math.acos(cos_t)
                     if self.m1 != 1.0:
                         t = t * self.m1
@@ -183,7 +183,7 @@ class FaceCategoryOutput(Layer):
                     body = tf.math.cos(t)
                     if self.m3 > 0.0:
                         body = body - self.m3
-                    diff = body * self.s - fc7
+                    diff = tf.expand_dims(body * self.s, -1) * label_one_hot - fc7
                     body = tf.multiply(label_one_hot, diff)
                     fc7 = fc7 + body
         else:
@@ -195,12 +195,55 @@ class FaceCategoryOutput(Layer):
         return fc7
 
     def get_config(self):
-        return {'units': self.units,
-                'act': self.act,
-                'loss_type': self.loss_type,
-                's': self.s,
-                'm1': self.m1,
-                'm2': self.m2,
-                'm3': self.m3,
-                'use_bias': self.use_bias}
+        cfg = super(FaceCategoryOutput, self).get_config()
+        append = {'units': self.units,
+                  'act': self.act,
+                  'loss_type': self.loss_type,
+                  's': self.s,
+                  'm1': self.m1,
+                  'm2': self.m2,
+                  'm3': self.m3,
+                  'use_bias': self.use_bias}
+        cfg.update(append)
+        return cfg
+
+
+class FaceCategoryLogits(Layer):
+    def __init__(self, units, norm, use_bias=False, name='face_logits'):
+        super(FaceCategoryLogits, self).__init__(name=name)
+        self.units = units
+        self.norm = norm
+        self.use_bias = use_bias
+
+    def build(self, input_shape):
+        self.w = self.add_weight(name='fc7_weight',
+                                 shape=(input_shape[-1].value, self.units),
+                                 initializer=tf.random_normal_initializer(stddev=0.01),
+                                 trainable=True)
+        if not self.norm and self.use_bias:
+            self.b = self.add_weight(name='fc7_bias',
+                                     shape=[self.units, ],
+                                     initializer=tf.zeros_initializer(),
+                                     trainable=True)
+
+    def call(self, inputs):
+        if self.norm:
+            embedding_norm = tf.norm(inputs, axis=-1, keepdims=True, name='fc1n')
+            embedding = inputs / embedding_norm
+            w_norm = tf.norm(self.w, axis=0, keepdims=True)
+            w = self.w / w_norm
+            fc7 = tf.matmul(embedding, w, name='fc7')
+        else:
+            fc7 = tf.matmul(inputs, self.w)
+            if self.use_bias:
+                fc7 = tf.add(fc7, self.b)
+        return fc7
+
+    def get_config(self):
+        cfg = super(FaceCategoryLogits, self).get_config()
+        append = {'units': self.units,
+                  'norm': self.norm,
+                  'use_bias': self.use_bias}
+        cfg.update(append)
+        return cfg
 

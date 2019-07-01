@@ -17,8 +17,8 @@ def train_parse_function(example_proto):
     img = tf.reshape(img, shape=(112, 112, 3))
     img = tf.cast(img, dtype=tf.float32)
     img = tf.image.random_flip_left_right(img)
-    label = tf.cast(features['label'], tf.int64)
-    return (img, label), label
+    label = tf.cast(features['label'], tf.int32)
+    return img, label
 
 
 def get_valid_parse_function(flip):
@@ -62,7 +62,7 @@ def count_training_data():
     steps = 0
     while True:
         try:
-            (images, labels), labels = sess.run(next_element)
+            images, labels = sess.run(next_element)
             dataset_size += images.shape[0]
             if images.shape[0] % 1000 != 0:
                 print('last batch size:', images.shape[0])
@@ -76,14 +76,14 @@ def count_training_data():
 
 def view_training_data():
     sess = tf.Session()
-    tf_records = os.path.join('data', 'train.tfrecords')
+    tf_records = os.path.join('data/faces_emore', 'train.tfrecords')
     if not os.path.exists(tf_records):
         raise FileExistsError(tf_records)
     iterator, next_element = get_training_pipeline(tf_records)
     sess.run(iterator.initializer)
     while True:
         try:
-            (images, labels), labels = sess.run(next_element)
+            images, labels = sess.run(next_element)
             images /= 255.
             plt.figure()
             for k in range(16):
@@ -209,10 +209,10 @@ def load_valid_set(data_dir, dataset_list):
 
 
 if __name__ == '__main__':
-    # view_training_data()
+    view_training_data()
     # count_training_data()
     # load_valid_set('data', ['lfw', 'cfp_fp', 'agedb_30'])
     # read_valid_sets('data', [['lfw', 'cfp_fp', 'agedb_30', 'calfw', 'cfp_ff', 'cplfw', 'vgg2_fp']])
-    view_bin('data/faces_emore/vgg2_fp.bin')
+    # view_bin('data/faces_emore/vgg2_fp.bin')
     # load_eval_data(['lfw', 'cfp_fp', 'agedb_30'], (112, 112))
 
