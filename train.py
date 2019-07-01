@@ -6,6 +6,7 @@ import sklearn
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.utils import multi_gpu_model
 
 import data_input
 import verification
@@ -57,11 +58,16 @@ def train_net(args):
     print('image_size', image_size)
     print('num_classes', config.num_classes)
     training_path = os.path.join(data_dir, "train.tfrecords")
-
     print('Called with argument:', args, config)
-    train_dataset, batches_per_epoch = data_input.training_dataset(training_path, default.per_batch_size)
+
+    strategy = tf.distribute.MirroredStrategy()
+    print('Number of devices:{}'.format(strategy.num_replicas_in_sync))
+    default.batch_size = default.per_batch_size * strategy.num_replicas_in_sync
+    print('batch size:{}'.format(default.batch_size))
+    train_dataset, batches_per_epoch = data_input.training_dataset(training_path, default.batch_size)
 
     extractor, classifier = build_model((image_size[0], image_size[1], 3), args)
+    classifier = multi_gpu_model(classifier, strategy.num_replicas_in_sync)
 
     initial_epoch = 0
     ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model-{step:04d}.ckpt')
@@ -122,8 +128,8 @@ def main():
 
 
 if __name__ == '__main__':
-    tf_config = tf.ConfigProto(log_device_placement=False, gpu_options=tf.GPUOptions())
-    tf_config.gpu_options.allow_growth = True
-    sess = tf.Session(config=tf_config)
-    K.set_session(sess)
+    # tf_config = tf.ConfigProto(log_device_placement=False, gpu_options=tf.GPUOptions())
+    # tf_config.gpu_options.allow_growth = True
+    # sess = tf.Session(config=tf_config)
+    # K.set_session(sess)
     main()
