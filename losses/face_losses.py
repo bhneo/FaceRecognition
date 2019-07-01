@@ -79,6 +79,43 @@ def make_logits_v2(embedding, one_hot_label, class_num, loss_type='margin_softma
     return fc7
 
 
+def make_logits_v3(embedding, label_one_hot, class_num, loss_type='margin_softmax', s=64.0, m1=1.0, m2=0.5, m3=0.0, w=None, use_bias=False):
+    embedding_size = embedding.get_shape().as_list()[-1]
+    if w is None:
+        w = tf.Variable(tf.random_normal([embedding_size, class_num], stddev=0.01), name='fc7_weight')
+    if loss_type == 'margin_softmax':
+        embedding_norm = tf.norm(embedding, axis=-1, keepdims=True, name='fc1n')
+        embedding = embedding/embedding_norm
+        w_norm = tf.norm(w, axis=0, keepdims=True)
+        w = w/w_norm
+        embedding_norm_scale = embedding * s
+        fc7 = tf.matmul(embedding_norm_scale, w, name='fc7')
+        if m1 != 1.0 or m2 != 0.0 or m3 != 0.0:
+            if m1 == 1.0 and m2 == 0.0:
+                s_m = s * m3
+                label_one_hot = label_one_hot * s_m
+                fc7 = fc7 - label_one_hot
+            else:
+                cos_t = tf.reduce_sum(fc7 * label_one_hot, -1) / s
+                t = tf.math.acos(cos_t)
+                if m1 != 1.0:
+                    t = t * m1
+                if m2 > 0.0:
+                    t = t + m2
+                body = tf.math.cos(t)
+                if m3 > 0.0:
+                    body = body - m3
+                diff = tf.expand_dims(body * s, -1) * label_one_hot - fc7
+                body = tf.multiply(label_one_hot, diff)
+                fc7 = fc7 + body
+    else:
+        fc7 = tf.matmul(embedding, w)
+        if use_bias:
+            bias = tf.Variable(tf.zeros([class_num, ]), name='fc7_bias')
+            fc7 = tf.add(fc7, bias)
+    return fc7
+
+
 class FaceCategoryOutput(Layer):
     def __init__(self, units, loss_type='margin_softmax', act='softmax', s=64.0, m1=1.0, m2=0.5, m3=0.0, w=None, use_bias=False, name='face_category'):
         super(FaceCategoryOutput, self).__init__(name=name)
@@ -153,7 +190,7 @@ class FaceCategoryOutput(Layer):
 if __name__ == '__main__':
     cfg.debug = True
     tf.enable_eager_execution()
-    batch_num = 1
+    batch_num = 100
     batch_size = 2048
     feature_dim = 512
     persons = 100
@@ -181,7 +218,13 @@ if __name__ == '__main__':
     t3 = time.time()
     print('logits 3 cost:', t3 - t2, 's')
     print('out3:', out3)
+    for _ in range(batch_num):
+        out4 = make_logits_v3(embeddings, labels_one_hot, persons, w=ws)
+    t4 = time.time()
+    print('logits 4 cost:', t4 - t3, 's')
+    print('out4:', out4)
     print('out1-out2', tf.reduce_sum(out1 - out2))
     print('out3-out2', tf.reduce_sum(out3 - out2))
     print('out3-out1', tf.reduce_sum(out3 - out1))
+    print('out4-out1', tf.reduce_sum(out4 - out1))
 

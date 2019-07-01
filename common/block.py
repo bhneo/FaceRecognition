@@ -174,7 +174,7 @@ class FaceCategoryOutput(Layer):
                     label_one_hot = label_one_hot * s_m
                     fc7 = fc7 - label_one_hot
                 else:
-                    cos_t = fc7 / self.s
+                    cos_t = tf.reduce_sum(fc7 * label_one_hot, -1) / self.s
                     t = tf.math.acos(cos_t)
                     if self.m1 != 1.0:
                         t = t * self.m1
@@ -183,7 +183,7 @@ class FaceCategoryOutput(Layer):
                     body = tf.math.cos(t)
                     if self.m3 > 0.0:
                         body = body - self.m3
-                    diff = body * self.s - fc7
+                    diff = tf.expand_dims(body * self.s, -1) * label_one_hot - fc7
                     body = tf.multiply(label_one_hot, diff)
                     fc7 = fc7 + body
         else:
