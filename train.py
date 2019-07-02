@@ -2,18 +2,15 @@ import argparse
 import os
 
 import numpy as np
-import sklearn
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import multi_gpu_model
 
 import data_input
-import verification
 from nets import fmobilefacenet
-from losses.face_losses import MarginSoftmaxSparseCategoricalCrossentropy
 from common import block, utils, callbacks
 from config import config, default, generate_config
+from losses.face_losses import MarginSoftmaxSparseCategoricalCrossentropy
 
 
 def parse_args():
