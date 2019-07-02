@@ -67,7 +67,8 @@ def train_net(args):
     train_dataset, batches_per_epoch = data_input.training_dataset(training_path, default.batch_size)
 
     extractor, classifier = build_model((image_size[0], image_size[1], 3), args)
-    classifier = multi_gpu_model(classifier, strategy.num_replicas_in_sync)
+    if strategy.num_replicas_in_sync > 1:
+        classifier = multi_gpu_model(classifier, strategy.num_replicas_in_sync)
 
     initial_epoch = 0
     ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model-{step:04d}.ckpt')
