@@ -3,6 +3,7 @@ import numpy as np
 import verification
 
 import sklearn
+import time
 import data_input
 from tensorflow import keras
 from tensorflow.python.platform import tf_logging as logging
@@ -58,11 +59,15 @@ class FaceRecognitionValidation(Callback):
         self.global_step = 0
         self.save_step = 0
         self.epoch = 0
+        # self.t = 0
 
     def on_epoch_begin(self, epoch, logs=None):
         self.epoch = epoch
 
     def on_batch_end(self, batch, logs=None):
+        # t = time.time()
+        # print('time:', t - self.t)
+        # self.t = t
         global_step = self.epoch * self.steps_per_epoch + batch
         if global_step > 0 and global_step % self.period == 0:
             acc_list = []
