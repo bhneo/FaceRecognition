@@ -149,7 +149,7 @@ class FaceCategoryOutput(Layer):
 
     def build(self, input_shape):
         self.w = self.add_weight(name='fc7_weight',
-                                 shape=(input_shape[0][-1].value, self.units),
+                                 shape=(input_shape[0][-1], self.units),
                                  initializer=tf.random_normal_initializer(stddev=0.01),
                                  trainable=True)
         if self.loss_type != 'margin_softmax' and self.use_bias:
@@ -217,7 +217,7 @@ class FaceCategoryLogits(Layer):
 
     def build(self, input_shape):
         self.w = self.add_weight(name='fc7_weight',
-                                 shape=(input_shape[-1].value, self.units),
+                                 shape=(input_shape[-1], self.units),
                                  initializer=tf.random_normal_initializer(stddev=0.01),
                                  trainable=True)
         if not self.norm and self.use_bias:

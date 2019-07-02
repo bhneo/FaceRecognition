@@ -1,5 +1,3 @@
-from tensorflow import keras
-
 from common import block
 from config import config
 

@@ -1,19 +1,15 @@
-import tensorflow as tf
 import time
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
+
+import tensorflow as tf
 from tensorflow.python.keras.losses import Loss
-from tensorflow.python.ops.losses import losses_impl
-from tensorflow import keras
-from tensorflow.python.keras.layers import Layer
+
 from config import config as cfg
 
 
 def make_logits(embedding, label_one_hot, class_num, loss_type='margin_softmax', s=64.0, m1=1.0, m2=0.5, m3=0.0, w=None, use_bias=False):
     embedding_size = embedding.get_shape().as_list()[-1]
     if w is None:
-        w = tf.Variable(tf.random_normal([embedding_size, class_num], stddev=0.01), name='fc7_weight')
+        w = tf.Variable(tf.random.normal([embedding_size, class_num], stddev=0.01), name='fc7_weight')
     if loss_type == 'margin_softmax':
         embedding_norm = tf.norm(embedding, axis=-1, keepdims=True, name='fc1n')
         embedding = embedding/embedding_norm
@@ -50,7 +46,7 @@ def make_logits(embedding, label_one_hot, class_num, loss_type='margin_softmax',
 def make_logits_v2(embedding, one_hot_label, class_num, loss_type='margin_softmax', s=64.0, m1=1.0, m2=0.5, m3=0.0, w=None, use_bias=False):
     embedding_size = embedding.get_shape().as_list()[-1]
     if w is None:
-        w = tf.Variable(tf.random_normal([embedding_size, class_num], stddev=0.01), name='fc7_weight')
+        w = tf.Variable(tf.random.normal([embedding_size, class_num], stddev=0.01), name='fc7_weight')
     if loss_type == 'margin_softmax':
         embedding_norm = tf.norm(embedding, axis=-1, keepdims=True, name='fc1n')
         embedding = embedding / embedding_norm
@@ -87,7 +83,7 @@ def make_logits_v2(embedding, one_hot_label, class_num, loss_type='margin_softma
 def make_logits_v3(embedding, label_one_hot, class_num, loss_type='margin_softmax', s=64.0, m1=1.0, m2=0.5, m3=0.0, w=None, use_bias=False):
     embedding_size = embedding.get_shape().as_list()[-1]
     if w is None:
-        w = tf.Variable(tf.random_normal([embedding_size, class_num], stddev=0.01), name='fc7_weight')
+        w = tf.Variable(tf.random.normal([embedding_size, class_num], stddev=0.01), name='fc7_weight')
     if loss_type == 'margin_softmax':
         embedding_norm = tf.norm(embedding, axis=-1, keepdims=True, name='fc1n')
         embedding = embedding/embedding_norm
@@ -137,10 +133,9 @@ class MarginSoftmaxSparseCategoricalCrossentropy(Loss):
                  m1=1.0,
                  m2=0.5,
                  m3=0.0,
-                 reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
                  name=None):
         super(MarginSoftmaxSparseCategoricalCrossentropy, self).__init__(
-            reduction=reduction, name=name)
+            name=name)
         self.units = units
         self.s = s
         self.m1 = m1
@@ -148,7 +143,7 @@ class MarginSoftmaxSparseCategoricalCrossentropy(Loss):
         self.m3 = m3
 
     def call(self, y_true, y_pred):
-        y_one_hot = tf.one_hot(tf.squeeze(tf.to_int32(y_true)), self.units)
+        y_one_hot = tf.one_hot(tf.squeeze(tf.cast(y_true, tf.int32)), self.units)
 
         if self.m1 != 1.0 or self.m2 != 0.0 or self.m3 != 0.0:
             if self.m1 == 1.0 and self.m2 == 0.0:
@@ -167,19 +162,18 @@ class MarginSoftmaxSparseCategoricalCrossentropy(Loss):
                 body = tf.multiply(y_one_hot, diff)
                 y_pred = self.s * (y_pred + body)
 
-        return tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_one_hot, logits=y_pred)
+        return tf.nn.softmax_cross_entropy_with_logits(labels=y_one_hot, logits=y_pred)
 
 
 if __name__ == '__main__':
     cfg.debug = True
-    tf.enable_eager_execution()
     batch_num = 100
     batch_size = 2048
     feature_dim = 512
     persons = 100
-    embeddings = tf.constant(tf.random_normal([batch_size, feature_dim]))
-    ws = tf.Variable(tf.random_normal([feature_dim, persons]))
-    labels = tf.constant(tf.random_uniform([batch_size, ], maxval=persons, dtype=tf.int32))
+    embeddings = tf.constant(tf.random.normal([batch_size, feature_dim]))
+    ws = tf.Variable(tf.random.normal([feature_dim, persons]))
+    labels = tf.constant(tf.random.uniform([batch_size, ], maxval=persons, dtype=tf.int32))
     labels_one_hot = tf.one_hot(labels, persons)
 
     tmp = make_logits(embeddings, labels_one_hot, persons, w=ws)

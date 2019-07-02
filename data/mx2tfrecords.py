@@ -23,7 +23,7 @@ def parse_args():
 
 def mx2tfrecords(imgidx, imgrec, args):
     output_path = os.path.join(args.tfrecords_file_path, 'train.tfrecords')
-    writer = tf.python_io.TFRecordWriter(output_path)
+    writer = tf.io.TFRecordWriter(output_path)
     for i in imgidx:
         img_info = imgrec.read_idx(i)
         header, img = mx.recordio.unpack(img_info)
@@ -39,9 +39,9 @@ def mx2tfrecords(imgidx, imgrec, args):
 
 
 def parse_function(example_proto):
-    features = {'image_raw': tf.FixedLenFeature([], tf.string),
-                'label': tf.FixedLenFeature([], tf.int64)}
-    features = tf.parse_single_example(example_proto, features)
+    features = {'image_raw': tf.io.FixedLenFeature([], tf.string),
+                'label': tf.io.FixedLenFeature([], tf.int64)}
+    features = tf.io.parse_single_example(example_proto, features)
     # You can do more image distortion here for training data
     img = tf.image.decode_jpeg(features['image_raw'])
     img = tf.reshape(img, shape=(112, 112, 3))

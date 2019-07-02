@@ -64,7 +64,8 @@ def train_net(args):
     train_dataset, batches_per_epoch = data_input.training_dataset(training_path, default.batch_size)
 
     extractor, classifier = build_model((image_size[0], image_size[1], 3), args)
-    classifier = multi_gpu_model(classifier, strategy.num_replicas_in_sync)
+    if strategy.num_replicas_in_sync > 1:
+        classifier = multi_gpu_model(classifier, strategy.num_replicas_in_sync)
 
     initial_epoch = 0
     ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model-{step:04d}.ckpt')
@@ -90,7 +91,7 @@ def train_net(args):
     init_lr = lr_schedule(initial_epoch*batches_per_epoch, args.lr)
 
     _callbacks = [callbacks.LearningRateSchedulerOnBatch(lr_schedule, steps_per_epoch=batches_per_epoch, verbose=1),
-                  keras.callbacks.TensorBoard(ckpt_dir, update_freq=args.frequent),
+                  keras.callbacks.TensorBoard(ckpt_dir, profile_batch=0, update_freq=args.frequent),
                   callbacks.FaceRecognitionValidation(extractor,
                                                       steps_per_epoch=batches_per_epoch,
                                                       valid_list=data_input.read_valid_sets(data_dir, config.val_targets),
