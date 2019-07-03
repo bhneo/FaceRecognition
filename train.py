@@ -79,7 +79,6 @@ def train_net(args):
         if latest:
             initial_step = int(latest.split('-')[-1].split('.')[0])
             load_path = latest
-
     else:
         print('loading', args.pretrained, args.pretrained_epoch)
         load_path = os.path.join(args.pretrained, '-', args.pretrained_epoch, '.ckpt')
