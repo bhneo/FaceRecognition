@@ -69,7 +69,8 @@ def train_net(args):
     extractor, classifier = build_model((image_size[0], image_size[1], 3), args)
     classifier = multi_gpu_model(classifier, strategy.num_replicas_in_sync)
 
-    initial_epoch = 0
+    initial_step = 0
+    load_path = None
     ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model-{step:04d}.ckpt')
     ckpt_dir = os.path.dirname(ckpt_path)
     print('ckpt_path', ckpt_path)
@@ -78,19 +79,31 @@ def train_net(args):
     if len(args.pretrained) == 0:
         latest = tf.train.latest_checkpoint(ckpt_dir)
         if latest:
-            initial_epoch = int(latest.split('-')[-1].split('.')[0])
-            classifier.load_weights(latest)
+            initial_step = int(latest.split('-')[-1].split('.')[0])
+            load_path = latest
+
     else:
         print('loading', args.pretrained, args.pretrained_epoch)
         load_path = os.path.join(args.pretrained, '-', args.pretrained_epoch, '.ckpt')
-        classifier.load_weights(load_path)
 
     lr_decay_steps = {}
     for i, x in enumerate(args.lr_steps.split(',')):
         lr_decay_steps[int(x)] = args.lr*np.power(0.1, i+1)
     print('lr_steps', lr_decay_steps)
     lr_schedule = utils.get_lr_schedule(lr_decay_steps)
-    init_lr = lr_schedule(initial_epoch*batches_per_epoch, args.lr)
+    init_lr = lr_schedule(initial_step, args.lr/strategy.num_replicas_in_sync)
+
+    classifier.compile(optimizer=keras.optimizers.SGD(lr=init_lr, momentum=args.mom),
+                       loss=MarginSoftmaxSparseCategoricalCrossentropy(config.num_classes,
+                                                                       config.loss_s,
+                                                                       config.loss_m1,
+                                                                       config.loss_m2,
+                                                                       config.loss_m3),
+                       metrics=[keras.metrics.SparseCategoricalAccuracy()])
+    classifier.summary()
+    if load_path:
+        classifier.load_weights(load_path)
+        print('weights load from: {}'.format(load_path))
 
     _callbacks = [callbacks.LearningRateSchedulerOnBatch(lr_schedule, steps_per_epoch=batches_per_epoch, verbose=1),
                   keras.callbacks.TensorBoard(ckpt_dir, update_freq=args.frequent),
@@ -107,16 +120,9 @@ def train_net(args):
                                                    save_weights_only=True,
                                                    mode='max',
                                                    period=args.verbose)]
-    classifier.compile(optimizer=keras.optimizers.SGD(lr=init_lr, momentum=args.mom),
-                       loss=MarginSoftmaxSparseCategoricalCrossentropy(config.num_classes,
-                                                                       config.loss_s,
-                                                                       config.loss_m1,
-                                                                       config.loss_m2,
-                                                                       config.loss_m3),
-                       metrics=[keras.metrics.SparseCategoricalAccuracy()])
-    classifier.summary()
+
     classifier.fit(train_dataset,
-                   initial_epoch=initial_epoch,
+                   initial_epoch=initial_step // batches_per_epoch,
                    epochs=default.end_epoch,
                    steps_per_epoch=batches_per_epoch,
                    callbacks=_callbacks)

@@ -37,6 +37,7 @@ def training_dataset(tf_record_path, batch_size=128, shuffle_buffer=50000):
     dataset = dataset.map(train_parse_function, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     if shuffle_buffer is not 0:
         dataset = dataset.shuffle(buffer_size=shuffle_buffer)
+    dataset = dataset.repeat()
     dataset = dataset.batch(batch_size)
     dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
     batch_num = TRAIN_SET_NUM // batch_size
