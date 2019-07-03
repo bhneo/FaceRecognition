@@ -2,18 +2,15 @@ import argparse
 import os
 
 import numpy as np
-import sklearn
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import multi_gpu_model
 
 import data_input
-import verification
 from nets import fmobilefacenet
-from losses.face_losses import MarginSoftmaxSparseCategoricalCrossentropy
 from common import block, utils, callbacks
 from config import config, default, generate_config
+from losses.face_losses import MarginSoftmaxSparseCategoricalCrossentropy
 
 
 def parse_args():
@@ -67,7 +64,8 @@ def train_net(args):
     train_dataset, batches_per_epoch = data_input.training_dataset(training_path, default.batch_size)
 
     extractor, classifier = build_model((image_size[0], image_size[1], 3), args)
-    classifier = multi_gpu_model(classifier, strategy.num_replicas_in_sync)
+    if strategy.num_replicas_in_sync > 1:
+        classifier = multi_gpu_model(classifier, strategy.num_replicas_in_sync)
 
     initial_step = 0
     load_path = None
