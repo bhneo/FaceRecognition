@@ -68,6 +68,7 @@ def train_net(args):
         classifier = multi_gpu_model(classifier, strategy.num_replicas_in_sync)
 
     initial_epoch = 0
+    global_step = 0
     ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset),
                              'model-{step:04d}.ckpt')
     ckpt_dir = os.path.dirname(ckpt_path)
@@ -77,7 +78,8 @@ def train_net(args):
     if len(args.pretrained) == 0:
         latest = tf.train.latest_checkpoint(ckpt_dir)
         if latest:
-            initial_epoch = int(latest.split('-')[-1].split('.')[0])
+            global_step = int(latest.split('-')[-1].split('.')[0])
+            initial_epoch = global_step // batches_per_epoch
             classifier.load_weights(latest)
     else:
         print('loading', args.pretrained, args.pretrained_epoch)
@@ -98,8 +100,7 @@ def train_net(args):
     optimizer = keras.optimizers.SGD(lr=init_lr, momentum=args.mom)
 
     train_loss = tf.keras.metrics.Mean(name='train_loss')
-    train_acc = keras.metrics.SparseCategoricalAccuracy(name='train_acc')
-
+    train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
     @tf.function
     def train_step(images, labels):
         with tf.GradientTape() as tape:
@@ -109,36 +110,51 @@ def train_net(args):
         gradients = tape.gradient(loss, classifier.trainable_variables)
         optimizer.apply_gradients(zip(gradients, classifier.trainable_variables))
 
+        # train_loss(loss)
+        # train_accuracy(labels, predictions)
 
+    import time
+    for epoch in range(initial_epoch, default.end_epoch):
+        t = time.time()
+        for images, labels in train_dataset:
+            train_step(images, labels)
+            global_step += 1
+            if global_step % 10 == 0:
+                t1 = time.time()
+                print('cost:', t1 - t)
+                t = t1
+            #     print('Step {}, Loss {}, Accuracy {}'.format(global_step, train_loss.result(), train_accuracy.result()))
+            #     train_loss.reset_states()
+            #     train_accuracy.reset_states()
 
-    _callbacks = [callbacks.LearningRateSchedulerOnBatch(lr_schedule, steps_per_epoch=batches_per_epoch, verbose=1),
-                  keras.callbacks.TensorBoard(ckpt_dir, profile_batch=0, update_freq=args.frequent),
-                  callbacks.FaceRecognitionValidation(extractor,
-                                                      steps_per_epoch=batches_per_epoch,
-                                                      valid_list=data_input.read_valid_sets(data_dir, config.val_targets),
-                                                      period=args.verbose,
-                                                      verbose=1),
-                  callbacks.ModelCheckpointOnBatch(ckpt_path,
-                                                   steps_per_epoch=batches_per_epoch,
-                                                   monitor='score',
-                                                   verbose=1,
-                                                   save_best_only=True,
-                                                   save_weights_only=True,
-                                                   mode='max',
-                                                   period=args.verbose)]
-    classifier.compile(optimizer=keras.optimizers.SGD(lr=init_lr, momentum=args.mom),
-                       loss=MarginSoftmaxSparseCategoricalCrossentropy(config.num_classes,
-                                                                       config.loss_s,
-                                                                       config.loss_m1,
-                                                                       config.loss_m2,
-                                                                       config.loss_m3),
-                       metrics=[keras.metrics.SparseCategoricalAccuracy()])
-    classifier.summary()
-    classifier.fit(train_dataset,
-                   initial_epoch=initial_epoch,
-                   epochs=default.end_epoch,
-                   steps_per_epoch=batches_per_epoch,
-                   callbacks=_callbacks)
+    # _callbacks = [callbacks.LearningRateSchedulerOnBatch(lr_schedule, steps_per_epoch=batches_per_epoch, verbose=1),
+    #               keras.callbacks.TensorBoard(ckpt_dir, profile_batch=0, update_freq=args.frequent),
+    #               callbacks.FaceRecognitionValidation(extractor,
+    #                                                   steps_per_epoch=batches_per_epoch,
+    #                                                   valid_list=data_input.read_valid_sets(data_dir, config.val_targets),
+    #                                                   period=args.verbose,
+    #                                                   verbose=1),
+    #               callbacks.ModelCheckpointOnBatch(ckpt_path,
+    #                                                steps_per_epoch=batches_per_epoch,
+    #                                                monitor='score',
+    #                                                verbose=1,
+    #                                                save_best_only=True,
+    #                                                save_weights_only=True,
+    #                                                mode='max',
+    #                                                period=args.verbose)]
+    # classifier.compile(optimizer=keras.optimizers.SGD(lr=init_lr, momentum=args.mom),
+    #                    loss=MarginSoftmaxSparseCategoricalCrossentropy(config.num_classes,
+    #                                                                    config.loss_s,
+    #                                                                    config.loss_m1,
+    #                                                                    config.loss_m2,
+    #                                                                    config.loss_m3),
+    #                    metrics=[keras.metrics.SparseCategoricalAccuracy()])
+    # classifier.summary()
+    # classifier.fit(train_dataset,
+    #                initial_epoch=initial_epoch,
+    #                epochs=default.end_epoch,
+    #                steps_per_epoch=batches_per_epoch,
+    #                callbacks=_callbacks)
 
 
 def main():
