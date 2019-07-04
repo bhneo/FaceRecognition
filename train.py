@@ -8,6 +8,7 @@ from tensorflow.python.keras.utils import multi_gpu_model
 
 import data_input
 from nets import fmobilefacenet
+from scipy import misc
 from common import block, utils, callbacks
 from config import config, default, generate_config
 from losses.face_losses import MarginSoftmaxSparseCategoricalCrossentropy
@@ -69,7 +70,7 @@ def train_net(args):
 
     initial_step = 0
     load_path = None
-    ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model-{step:04d}.ckpt')
+    ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model.h5')
     ckpt_dir = os.path.dirname(ckpt_path)
     print('ckpt_path', ckpt_path)
     if not os.path.exists(ckpt_dir):
@@ -90,7 +91,8 @@ def train_net(args):
     lr_schedule = utils.get_lr_schedule(lr_decay_steps)
     init_lr = lr_schedule(initial_step, args.lr/strategy.num_replicas_in_sync)
 
-    classifier.compile(optimizer=keras.optimizers.SGD(lr=init_lr, momentum=args.mom),
+    optimizer = keras.optimizers.SGD(lr=init_lr, momentum=args.mom)
+    classifier.compile(optimizer=optimizer,
                        loss=MarginSoftmaxSparseCategoricalCrossentropy(config.num_classes,
                                                                        config.loss_s,
                                                                        config.loss_m1,
@@ -98,25 +100,35 @@ def train_net(args):
                                                                        config.loss_m3),
                        metrics=[keras.metrics.SparseCategoricalAccuracy()])
     classifier.summary()
-    if load_path:
-        classifier.load_weights(load_path)
-        print('weights load from: {}'.format(load_path))
+    sample = misc.imread('sample.jpg')
+    sample = np.expand_dims(sample, 0)
+    results = {}
+    pred1 = classifier.predict(sample)
+    results['init'] = pred1
+    if os.path.exists(ckpt_path):
+        classifier.load_weights(ckpt_path)
+        # ckpt.restore(manager.latest_checkpoint)
+        print('weights load from: {}'.format(ckpt_path))
+        pred2 = classifier.predict(sample)
+        results['load weights'] = pred2
+        print(np.equal(pred1, pred2))
 
+    args.verbose = 10
     _callbacks = [callbacks.LearningRateSchedulerOnBatch(lr_schedule, steps_per_epoch=batches_per_epoch, verbose=1),
                   keras.callbacks.TensorBoard(ckpt_dir, update_freq=args.frequent),
-                  callbacks.FaceRecognitionValidation(extractor,
-                                                      steps_per_epoch=batches_per_epoch,
-                                                      valid_list=data_input.read_valid_sets(data_dir, config.val_targets),
-                                                      period=args.verbose,
-                                                      verbose=1),
+                  # callbacks.FaceRecognitionValidation(extractor,
+                  #                                     steps_per_epoch=batches_per_epoch,
+                  #                                     valid_list=data_input.read_valid_sets(data_dir, config.val_targets),
+                  #                                     period=args.verbose,
+                  #                                     verbose=1),
                   callbacks.ModelCheckpointOnBatch(ckpt_path,
                                                    steps_per_epoch=batches_per_epoch,
                                                    monitor='score',
                                                    verbose=1,
-                                                   save_best_only=True,
+                                                   save_best_only=False,
                                                    save_weights_only=True,
                                                    mode='max',
-                                                   period=args.verbose)]
+                                                   period=args.verbose, sample=sample, results=results, manager=None)]
 
     classifier.fit(train_dataset,
                    initial_epoch=initial_step // batches_per_epoch,

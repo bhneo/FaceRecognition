@@ -121,7 +121,10 @@ class ModelCheckpointOnBatch(Callback):
                  save_best_only=False,
                  save_weights_only=False,
                  mode='auto',
-                 period=1):
+                 period=1,
+                 sample=None,
+                 results=None,
+                 manager=None):
         super(ModelCheckpointOnBatch, self).__init__()
         self.monitor = monitor
         self.verbose = verbose
@@ -131,6 +134,9 @@ class ModelCheckpointOnBatch(Callback):
         self.save_weights_only = save_weights_only
         self.period = period
         self.epoch = 0
+        self.sample = sample
+        self.results = results
+        self.manager = manager
 
         if mode not in ['auto', 'min', 'max']:
             logging.warning('ModelCheckpoint mode %s is unknown, '
@@ -155,10 +161,11 @@ class ModelCheckpointOnBatch(Callback):
         self.epoch = epoch
 
     def on_batch_end(self, batch, logs=None):
-        global_step = self.epoch * self.steps_per_epoch + batch
+        global_step = self.epoch * self.steps_per_epoch + batch + 1
         logs = logs or {}
-        if global_step % self.period == 0:
-            filepath = self.filepath.format(step=batch + 1, **logs)
+        if global_step > 0 and global_step % self.period == 0:
+            # filepath = self.filepath.format(step=batch + 1, **logs)
+            filepath = self.filepath
             if self.save_best_only:
                 current = logs.get(self.monitor)
                 if current is None:
@@ -183,7 +190,19 @@ class ModelCheckpointOnBatch(Callback):
                 if self.verbose > 0:
                     print('\nStep %05d: saving model to %s' % (global_step + 1, filepath))
                 if self.save_weights_only:
-                    self.model.save_weights(filepath, overwrite=True)
+                    self.model.save_weights(filepath, overwrite=True, save_format='h5')
+                    # save_path = self.manager.save()
+                    # print('Save ckpt to {}'.format(save_path))
+                    pre3 = self.model.predict(self.sample)
+                    self.results['save'] = pre3
+                    with open('record.txt', 'w') as f:
+                        for k in self.results:
+                            res = self.results[k][0]
+                            res_str = k + ':'
+                            for i in range(res.size):
+                                res_str += str(res[i])
+                                res_str += ' '
+                            f.write(res_str+'\n')
                 else:
                     self.model.save(filepath, overwrite=True)
 

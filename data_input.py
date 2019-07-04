@@ -6,6 +6,8 @@ import mxnet as mx
 import numpy as np
 import tensorflow as tf
 
+from scipy import misc
+
 TRAIN_SET_NUM = 5822653
 
 
@@ -85,6 +87,9 @@ def view_training_data():
     while True:
         try:
             images, labels = sess.run(next_element)
+            one = images[0]
+            misc.imsave('sample.jpg', one)
+            print(one)
             images /= 255.
             plt.figure()
             for k in range(16):
