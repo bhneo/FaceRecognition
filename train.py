@@ -69,7 +69,7 @@ def train_net(args):
 
     initial_step = 0
     load_path = None
-    ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model-{step:04d}.ckpt')
+    ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model.h5')
     ckpt_dir = os.path.dirname(ckpt_path)
     print('ckpt_path', ckpt_path)
     if not os.path.exists(ckpt_dir):
@@ -82,6 +82,14 @@ def train_net(args):
     else:
         print('loading', args.pretrained, args.pretrained_epoch)
         load_path = os.path.join(args.pretrained, '-', args.pretrained_epoch, '.ckpt')
+    if os.path.exists(ckpt_path):
+        classifier = keras.models.load_model(ckpt_path, custom_objects={"ImageStandardization": block.ImageStandardization,
+                                                                        "ConvBnAct": block.ConvBnAct,
+                                                                        "DWConvBnAct": block.DWConvBnAct,
+                                                                        "DWBlock": block.DWBlock,
+                                                                        "ResDWBlock": block.ResDWBlock,
+                                                                        "FaceCategoryLogits": block.FaceCategoryLogits})
+
 
     lr_decay_steps = {}
     for i, x in enumerate(args.lr_steps.split(',')):
@@ -101,7 +109,7 @@ def train_net(args):
     if load_path:
         classifier.load_weights(load_path)
         print('weights load from: {}'.format(load_path))
-
+    args.verbose = 10
     _callbacks = [callbacks.LearningRateSchedulerOnBatch(lr_schedule, steps_per_epoch=batches_per_epoch, verbose=1),
                   keras.callbacks.TensorBoard(ckpt_dir, update_freq=args.frequent),
                   callbacks.FaceRecognitionValidation(extractor,
@@ -113,8 +121,8 @@ def train_net(args):
                                                    steps_per_epoch=batches_per_epoch,
                                                    monitor='score',
                                                    verbose=1,
-                                                   save_best_only=True,
-                                                   save_weights_only=True,
+                                                   save_best_only=False,
+                                                   save_weights_only=False,
                                                    mode='max',
                                                    period=args.verbose)]
 
