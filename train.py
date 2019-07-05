@@ -37,6 +37,20 @@ def parse_args():
     return args
 
 
+def to_saved_model(model, input_shape=(1, 112, 112, 3), name='saved_model'):
+    model.input.set_shape(input_shape)
+    keras.backend.set_learning_phase(False)
+    with keras.backend.get_session() as sess:
+        tf.saved_model.simple_save(sess, name, inputs={'inputs': model.input},
+                                   outputs={'output': model.output})
+
+
+def saved_model_to_tflite(saved_model_path, out_path):
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_path)
+    tflite_model = converter.convert()
+    open(out_path, 'wb').write(tflite_model)
+
+
 def build_model(input_shape, args):
     data = keras.Input(shape=input_shape, name='data')
     embedding = eval(config.net_name).get_symbol(data, config.emb_size, None, config.net_act, args.wd)
