@@ -90,7 +90,6 @@ def train_net(args):
                                                                         "ResDWBlock": block.ResDWBlock,
                                                                         "FaceCategoryLogits": block.FaceCategoryLogits})
 
-
     lr_decay_steps = {}
     for i, x in enumerate(args.lr_steps.split(',')):
         lr_decay_steps[int(x)] = args.lr*np.power(0.1, i+1)
@@ -112,11 +111,11 @@ def train_net(args):
     args.verbose = 10
     _callbacks = [callbacks.LearningRateSchedulerOnBatch(lr_schedule, steps_per_epoch=batches_per_epoch, verbose=1),
                   keras.callbacks.TensorBoard(ckpt_dir, update_freq=args.frequent),
-                  callbacks.FaceRecognitionValidation(extractor,
-                                                      steps_per_epoch=batches_per_epoch,
-                                                      valid_list=data_input.read_valid_sets(data_dir, config.val_targets),
-                                                      period=args.verbose,
-                                                      verbose=1),
+                  # callbacks.FaceRecognitionValidation(extractor,
+                  #                                     steps_per_epoch=batches_per_epoch,
+                  #                                     valid_list=data_input.read_valid_sets(data_dir, config.val_targets),
+                  #                                     period=args.verbose,
+                  #                                     verbose=1),
                   callbacks.ModelCheckpointOnBatch(ckpt_path,
                                                    steps_per_epoch=batches_per_epoch,
                                                    monitor='score',

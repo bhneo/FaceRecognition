@@ -155,7 +155,7 @@ class ModelCheckpointOnBatch(Callback):
         self.epoch = epoch
 
     def on_batch_end(self, batch, logs=None):
-        global_step = self.epoch * self.steps_per_epoch + batch
+        global_step = self.epoch * self.steps_per_epoch + batch + 1
         logs = logs or {}
         if global_step % self.period == 0:
             filepath = self.filepath.format(step=batch + 1, **logs)

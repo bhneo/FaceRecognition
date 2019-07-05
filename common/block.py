@@ -38,8 +38,8 @@ def get_fc1(last_conv, training, embedding_size, fc_type, bn_mom=0.9, wd=0.0005)
 
 
 class ImageStandardization(Layer):
-    def __init__(self, mean=127.5, std_inv=0.0078125):
-        super(ImageStandardization, self).__init__()
+    def __init__(self, mean=127.5, std_inv=0.0078125,  **kwargs):
+        super(ImageStandardization, self).__init__(**kwargs)
         self.mean = mean
         self.std_inv = std_inv
 
@@ -48,11 +48,18 @@ class ImageStandardization(Layer):
         image = image * self.std_inv
         return image
 
+    def get_config(self):
+        cfg = super(ImageStandardization, self).get_config()
+        append = {'mean': self.mean,
+                  'std_inv': self.std_inv}
+        cfg.update(append)
+        return cfg
+
 
 class ConvBnAct(Layer):
     def __init__(self, filters=1, kernel_size=3, stride=1, padding=1, act_type='prelu',
-                 use_bias=False, wd=0.0005, bn_mom=0.9, name='conv_bn_act'):
-        super(ConvBnAct, self).__init__(name=name)
+                 use_bias=False, wd=0.0005, bn_mom=0.9, name='conv_bn_act',  **kwargs):
+        super(ConvBnAct, self).__init__(name=name, **kwargs)
         if padding > 0:
             self.pad = keras.layers.ZeroPadding2D(padding=padding)
         else:
@@ -76,8 +83,8 @@ class ConvBnAct(Layer):
 
 class DWConvBnAct(Layer):
     def __init__(self, kernel_size=3, stride=1, padding=1, act_type='prelu',
-                 use_bias=False, wd=0.0005, bn_mom=0.9, name='dw_conv_bn_act'):
-        super(DWConvBnAct, self).__init__(name=name)
+                 use_bias=False, wd=0.0005, bn_mom=0.9, name='dw_conv_bn_act', **kwargs):
+        super(DWConvBnAct, self).__init__(name=name, **kwargs)
         if padding > 0:
             self.pad = keras.layers.ZeroPadding2D(padding=padding)
         else:
@@ -101,10 +108,10 @@ class DWConvBnAct(Layer):
 
 class DWBlock(Layer):
     def __init__(self, num_out, kernel_size=3, stride=1, padding=1, num_group=1, act_type='prelu',
-                 use_bias=False, wd=0.0005, bn_mom=0.9, name='dw_block', suffix=''):
+                 use_bias=False, wd=0.0005, bn_mom=0.9, name='dw_block', suffix='', **kwargs):
         if len(suffix) > 0:
             name = '_'.join([name, suffix])
-        super(DWBlock, self).__init__(name=name)
+        super(DWBlock, self).__init__(name=name, **kwargs)
 
         self.expand = ConvBnAct(filters=num_group, kernel_size=1, stride=1, padding=0, act_type=act_type,
                                 use_bias=use_bias, wd=wd, bn_mom=bn_mom, name='expand')
@@ -119,25 +126,23 @@ class DWBlock(Layer):
         x = self.project(x, training=training)
         return x
 
-
-class ResDWBlock(Layer):
-    def __init__(self, num_out, kernel_size=3, stride=1, padding=1, num_group=1, act_type='prelu',
-                 use_bias=False, wd=0.0005, bn_mom=0.9, name='dw_block', suffix=''):
-        if len(suffix) > 0:
-            name = '_'.join([name, suffix])
-        super(ResDWBlock, self).__init__(name=name)
-        self.dw_block = DWBlock(num_out=num_out, kernel_size=kernel_size, stride=stride, padding=padding,
-                                num_group=num_group, act_type=act_type, use_bias=use_bias, wd=wd, bn_mom=bn_mom)
-
-    def call(self, inputs, training=None):
-        conv = self.dw_block(inputs, training=training)
-        out = keras.layers.add([conv, inputs])
-        return out
+    def get_config(self):
+        cfg = super(DWBlock, self).get_config()
+        append = {'units': self.units,
+                  'act': self.act,
+                  'loss_type': self.loss_type,
+                  's': self.s,
+                  'm1': self.m1,
+                  'm2': self.m2,
+                  'm3': self.m3,
+                  'use_bias': self.use_bias}
+        cfg.update(append)
+        return cfg
 
 
 class FaceCategoryOutput(Layer):
-    def __init__(self, units, loss_type='margin_softmax', act=None, s=64.0, m1=1.0, m2=0.5, m3=0.0, use_bias=False, name='face_category'):
-        super(FaceCategoryOutput, self).__init__(name=name)
+    def __init__(self, units, loss_type='margin_softmax', act=None, s=64.0, m1=1.0, m2=0.5, m3=0.0, use_bias=False, name='face_category', **kwargs):
+        super(FaceCategoryOutput, self).__init__(name=name, **kwargs)
         self.units = units
         self.loss_type = loss_type
         self.act = act
@@ -209,8 +214,8 @@ class FaceCategoryOutput(Layer):
 
 
 class FaceCategoryLogits(Layer):
-    def __init__(self, units, norm, use_bias=False, name='face_logits'):
-        super(FaceCategoryLogits, self).__init__(name=name)
+    def __init__(self, units, norm, use_bias=False, name='face_logits', **kwargs):
+        super(FaceCategoryLogits, self).__init__(name=name, **kwargs)
         self.units = units
         self.norm = norm
         self.use_bias = use_bias
