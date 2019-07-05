@@ -69,7 +69,7 @@ def train_net(args):
 
     initial_step = 0
     load_path = None
-    ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model-{step:04d}.ckpt')
+    ckpt_path = os.path.join(args.models_root, '%s-%s-%s' % (args.network, args.loss, args.dataset), 'model.h5')
     ckpt_dir = os.path.dirname(ckpt_path)
     print('ckpt_path', ckpt_path)
     if not os.path.exists(ckpt_dir):
@@ -98,6 +98,7 @@ def train_net(args):
                                                                        config.loss_m3),
                        metrics=[keras.metrics.SparseCategoricalAccuracy()])
     classifier.summary()
+    classifier.save()
     if load_path:
         classifier.load_weights(load_path)
         print('weights load from: {}'.format(load_path))
