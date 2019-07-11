@@ -98,7 +98,6 @@ def train_net(args):
                                                                        config.loss_m3),
                        metrics=[keras.metrics.SparseCategoricalAccuracy()])
     classifier.summary()
-    classifier.save()
     if load_path:
         classifier.load_weights(load_path)
         print('weights load from: {}'.format(load_path))

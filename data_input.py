@@ -6,6 +6,7 @@ import mxnet as mx
 import numpy as np
 import tensorflow as tf
 
+
 TRAIN_SET_NUM = 5822653
 
 
